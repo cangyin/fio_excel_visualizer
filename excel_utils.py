@@ -42,7 +42,7 @@ class ExcelUtils():
         try:
             sheet = self.sheets(name)
         except:
-            sheet = self.sheets.Add()
+            sheet = self.sheets.Add(After=self.sheets(self.sheets.Count))
             sheet.Name = name
         return sheet
 

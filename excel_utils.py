@@ -424,6 +424,8 @@ class ExcelXYChartUtils():
         self.set_x_tick_format(tick_format)
         self.set_y_tick_format(tick_format, tick_format)
 
+        self.set_legend_visible()
+
         if "position" in decl:
             x, y = decl["position"]
             self.set_position(x, y)
@@ -432,8 +434,6 @@ class ExcelXYChartUtils():
             self.chart.Parent.Select()
             vba = "With ActiveChart\n" + decl["with_chart"] + "\nEnd With"
             self.util.run_vba(vba)
-
-        self.set_legend_visible()
 
         return self
 

@@ -8,7 +8,9 @@ import re
 import json
 import csv
 import glob
+from itertools import accumulate
 from types import SimpleNamespace
+
 from excel_utils import ExcelUtils, ExcelXYChartUtils, app
 
 
@@ -112,18 +114,20 @@ def concatenate(*list_of_series, delimited=True):
 
 ## The major functions
 
-def aggregate(o :SimpleNamespace):
+def aggregate(o :SimpleNamespace) -> dict:
     '''
-    According to the json object, read data from log files, and return a list of tables. Each
-    table corresponds to a job' log data.
+    According to the json (output of Fio) object, read data from log files, and return a
+    list of tables. Each table corresponds to a job's log data, and consists of 3 groups
+    of series, where series are grouped by data direction (read, write, trim). Series in a
+    group are simply concatenated.
 
-    # A table is like:
-    # __________________________________________________________________________________________
-    # |                 Read                        |        Write        |        Trim        |
-    # | Time | BW  | Cum | Time | IOPS | Time | Lat |         ...         |        ...         |
-    # |      |     |     |      |      |      |     |         ...         |        ...         |
-    # |      |     |     |      |      |      |     |         ...         |        ...         |
-    # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    A table is like:
+    __________________________________________________________________________________________
+    |                 Read                        |        Write        |        Trim        |
+    | Time | BW  | Cum | Time | IOPS | Time | Lat |         ...         |        ...         |
+    |      |     |     |      |      |      |     |         ...         |        ...         |
+    |      |     |     |      |      |      |     |         ...         |        ...         |
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
     All log files should be found in current directory.
     '''
@@ -143,22 +147,28 @@ def aggregate(o :SimpleNamespace):
             print(f'skipped job {job.jobname} for it has no rw type')
             continue
 
-        table = [] # all series for this job, joined to be a table.
+        # all series for this job, grouped to be a table.
+        table = { }
 
-        for ddir in [0, 1, 2]: # read, write, trim
-            data_direction = ['Read', 'Write', 'Trim'][ddir]
+        for ddir in (0, 1, 2): # read, write, trim
+            # skip if no I/O operations in this direction
+            _keywords = (('read', 'rw'), ('write', 'rw'), ('trim', ))[ddir]
+            if not any([ s in rw for s in _keywords ]):
+                continue
 
-            series = []  # series for this data direction
+            data_direction = ('Read', 'Write', 'Trim')[ddir]
+
+            ddir_group = [] # all series for this data direction
             for tag, _get_series  in _tag_lambdas.items():
                 log_file = glob_a_file(f'{job.jobname}_{tag}.*.log')
 
                 s = _get_series(log_file, ddir)
                 s.insert(1, ['0'] * len(s[0])) # insert all '0' row
 
-                series = concatenate(series, s) # concatenate 2 series to a new series
+                # concatenate 2 series to a new series
+                ddir_group = concatenate(ddir_group, s, delimited=True)
 
-            series = prepend_header(series, data_direction)
-            table = concatenate(table, series)
+            table[data_direction] = prepend_header(ddir_group, data_direction)
 
         ## additional series goes here.
         # table = concatenate(table, <additional series>)
@@ -186,17 +196,12 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
     tables = aggregate(o)
 
     for job in o.jobs:
-        rw = getattr(job.job_options, 'rw') or getattr(job.job_options, 'readwrite') or None
 
         table = tables[job.jobname]
 
-        # helper variables
-        has_read_io = any([s in rw for s in ('read', 'rw')])
-        has_write_io = any([s in rw for s in ('write', 'rw')])
-        has_trim_io = any([s in rw for s in ('trim', )])
-
-        # replace empty str with None
-        table = tuple( tuple(x or None for x in row) for row in table )
+        ddir_group_widths = [ len(g[0]) for g in table.values() ]
+        # accumulate([1,2,3,4,5], initial=100) --> 100 101 103 106 110 115 (one more element than input)
+        ddir_group_offsets = list(accumulate(ddir_group_widths, initial=table_offset))
 
         ## let's move on to Excel steps.
     
@@ -205,30 +210,28 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
         sheet.Activate() # make it the ActiveSheet
         
         # dump table to excel sheet.
-        util.fill_cells(1, table_offset + 1, table)
+        for offset, ddir_group in zip(ddir_group_offsets, table.values()):
+            # replace empty str with None
+            ddir_group = tuple( tuple(x or None for x in row) for row in ddir_group )
+            util.fill_cells(1, offset + 1, ddir_group)
+
         # 自适应列宽
         app.Columns.AutoFit()
 
         # formulas: cumulative_IO_size
         # = (current_time - previous_time) * current_BW + cumulated_IO_size
         formula = "=(((RC[-2]-R[-1]C[-2])/1000)*RC[-1]/1024/1024+R[-1]C)"
-        for has_ddir_io, col_offset in ((has_read_io, 3), (has_write_io, 13), (has_trim_io, 23)):
-            if not has_ddir_io:
-                continue
-
-            formula_col = table_offset + col_offset
-            rbox = [(4, formula_col), (len(table), formula_col)]
+        for offset, ddir_group in zip(ddir_group_offsets, table.values()):
+            formula_col = offset + 3
+            rbox = [(4, formula_col), (len(ddir_group), formula_col)]
             util.set_formula( rbox, formula )
             util.range(rbox).NumberFormatLocal = "0.00_ " # two decimal places
 
         # charts
-        for ddir, has_ddir_io, ddir_offset in (("Read", has_read_io, 0), ("Write", has_write_io, 10), ("Trim", has_trim_io, 20)):
-            if not has_ddir_io:
-                continue
-            
-            offset = table_offset + ddir_offset
+        for offset, data_direction in zip(ddir_group_offsets, table.keys()):
+
             chart = ExcelXYChartUtils.create_with_declaration(sheet, {
-                "title": f"{ddir} Performance in Job '{job.jobname}'",
+                "title": f"{data_direction} Performance in Job '{job.jobname}'",
                 "series":  [
                     [ (4, offset + 1, offset + 2), 1,  "Bandwidth" ],
                     [ (4, offset + 8, offset + 9), 2,  "Latency" ],
@@ -239,7 +242,7 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
             }).chart
 
             chart = ExcelXYChartUtils.create_with_declaration(sheet, {
-                "title": f"{ddir} Performance by Cumulative I/O Size in Job '{job.jobname}'",
+                "title": f"{data_direction} Performance by Cumulative I/O Size in Job '{job.jobname}'",
                 "series":  [
                     [ (4, offset + 3, offset + 2), 1,  "Bandwidth" ],
                 ],
@@ -253,7 +256,7 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
         # TODO: common statistics: avg of bw, avg of iops, avg of latency, min max values.
 
         if sheet_name:
-            table_offset += len(table[0]) + 1 # 隔一列
+            table_offset += ddir_group_offsets[-1] + 1 # 隔一列
 
     os.chdir(old_cwd)
     return None

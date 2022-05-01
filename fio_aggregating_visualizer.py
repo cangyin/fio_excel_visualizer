@@ -164,14 +164,16 @@ def aggregate(o :SimpleNamespace) -> dict:
 
                 s = _get_series(log_file, ddir)
                 s.insert(1, ['0'] * len(s[0])) # insert all '0' row
-
                 # concatenate 2 series to a new series
                 ddir_group = concatenate(ddir_group, s, delimited=True)
 
             table[data_direction] = prepend_header(ddir_group, data_direction)
 
         ## additional series goes here.
-        # table = concatenate(table, <additional series>)
+        if table:
+            # `data_direction` should have been defined, if `table` is not empty.
+            ddir_group = table[data_direction]
+            # table[data_direction] = concatenate(ddir_group, <additional series>)
 
         # series = prepend_header(series, f"Job '{job.jobname}'")
         tables[job.jobname] = table

@@ -194,10 +194,9 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
     os.chdir(new_cwd)
 
     tables = aggregate(o)
+    del o
 
-    for job in o.jobs:
-
-        table = tables[job.jobname]
+    for jobname, table in tables.items():
 
         ddir_group_widths = [ len(g[0]) for g in table.values() ]
         # accumulate([1,2,3,4,5], initial=100) --> 100 101 103 106 110 115 (one more element than input)
@@ -206,7 +205,7 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
         ## let's move on to Excel steps.
     
         # get a worksheet
-        sheet = util.get_sheet(sheet_name or job.jobname)
+        sheet = util.get_sheet(sheet_name or jobname)
         sheet.Activate() # make it the ActiveSheet
         
         # dump table to excel sheet.
@@ -231,7 +230,7 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
         for offset, data_direction in zip(ddir_group_offsets, table.keys()):
 
             chart = ExcelXYChartUtils.create_with_declaration(sheet, {
-                "title": f"{data_direction} Performance in Job '{job.jobname}'",
+                "title": f"{data_direction} Performance in Job '{jobname}'",
                 "series":  [
                     [ (4, offset + 1, offset + 2), 1,  "Bandwidth" ],
                     [ (4, offset + 8, offset + 9), 2,  "Latency" ],
@@ -239,16 +238,18 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
                 "x_title": "msec",
                 "y_titles": [ "KB/s", "nsec" ],
                 "position": (util.range([(1, 1), (1, offset + 1)]).Width, util.range([(1, 1), (2, 1)]).Height),
+                "with_chart": f".Parent.Width = 450",
             }).chart
 
             chart = ExcelXYChartUtils.create_with_declaration(sheet, {
-                "title": f"{data_direction} Performance by Cumulative I/O Size in Job '{job.jobname}'",
+                "title": f"{data_direction} Performance by Cumulative I/O Size in Job '{jobname}'",
                 "series":  [
                     [ (4, offset + 3, offset + 2), 1,  "Bandwidth" ],
                 ],
                 "x_title": "GB",
                 "y_titles": [ "KB/s", "" ],
                 "position": (util.range([(1, 1), (1, offset + 1)]).Width, chart.Parent.Top + chart.Parent.Height + 1),
+                "with_chart": f".Parent.Width = 450",
             }).chart
 
         # TODO: histograms: latency

@@ -429,7 +429,7 @@ class ExcelXYChartUtils():
             self.set_position(x, y)
 
         if "with_chart" in decl:
-            self.chart.Select()
+            self.chart.Parent.Select()
             vba = "With ActiveChart\n" + decl["with_chart"] + "\nEnd With"
             self.util.run_vba(vba)
 

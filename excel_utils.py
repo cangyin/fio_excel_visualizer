@@ -171,14 +171,16 @@ class ExcelUtils():
             the VBA code to run, or name of the VBA procedure to run.
         '''
         if is_proc_name:
-            proc_name = proc
+            return app.Run(self.vbmodule.Name + '.' + proc)
         else:
             proc_name = self.inject_vba_proc(proc)
-        return app.Run(self.vbmodule.Name + '.' + proc_name)
+            ret = app.Run(self.vbmodule.Name + '.' + proc_name)
+            self.delete_vba_proc(proc_name)
+            return ret
 
 
     def delete_vba_proc(self, proc_name :str):
-        start = self.vbmodule.CodeModule.ProcStartLine(proc_name, constants.vbext_pk_Proc) # 0 = vbext_pk_Proc
+        start = self.vbmodule.CodeModule.ProcStartLine(proc_name, 0) # 0 = vbext_pk_Proc
         count = self.vbmodule.CodeModule.ProcCountLines(proc_name, 0) # 0 = vbext_pk_Proc
         self.vbmodule.CodeModule.DeleteLines(start, count)
 

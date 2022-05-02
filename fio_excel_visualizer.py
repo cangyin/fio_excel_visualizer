@@ -259,7 +259,7 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
         # TODO: common statistics: avg of bw, avg of iops, avg of latency, min max values.
 
         if sheet_name:
-            table_offset += ddir_group_offsets[-1] + 1 # 隔一列
+            table_offset = ddir_group_offsets[-1] + 1 # 隔一列
 
     os.chdir(old_cwd)
     return None

@@ -311,12 +311,12 @@ if __name__ == '__main__':
 
     table_offset = 0
     for i, d in enumerate(args.dirs):
+        d = os.path.abspath(d)
         json_file = glob_a_file(f'{d}/*.json')
-        sheet_name = args.sheet_name or d
 
+        sheet_name = args.sheet_name or os.path.basename(d)
         if args.sheet_names:
             sheet_name = args.sheet_names[i]
-
         if not args.sheet_name or args.sheet_names:
             table_offset = 0
 

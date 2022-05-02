@@ -3,6 +3,7 @@
 # logging.basicConfig(level=logging.DEBUG, format='%(asctime)s [%(module)s:%(lineno)d][%(levelname)s] %(message)s')
 # logger = logging.getLogger('main')
 
+import argparse
 import os
 import re
 import json
@@ -251,8 +252,26 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
                 "x_title": "GB",
                 "y_titles": [ "KB/s", "" ],
                 "position": (util.range([(1, 1), (1, offset + 1)]).Width, chart.Parent.Top + chart.Parent.Height + 1),
-                "with_chart": f".Parent.Width = 450",
+                "with_chart": f"""
+                    .Parent.Width = 450
+                    .Axes(xlCategory).MaximumScale = 20
+                """,
             }).chart
+
+            # add more charts like below.
+            # chart = ExcelXYChartUtils.create_with_declaration(sheet, {
+            #     "title": f"Chart X in Job '{jobname}'",
+            #     "series":  [
+            #         [ (4, offset + 3, offset + 2), 1,  "Bandwidth" ],
+            #     ],
+            #     "x_title": "x_title",
+            #     "y_titles": [ "y_title_primary", "y_title_secondary" ],
+            #     "position": (util.range([(1, 1), (1, offset + 1)]).Width, chart.Parent.Top + chart.Parent.Height + 1),
+            #     "with_chart": f"""
+            #         .Parent.Width = 450
+            #         .Parent.Height = 300
+            #     """,
+            # }).chart
 
         # TODO: histograms: latency
 
@@ -266,10 +285,43 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
 
 
 if __name__ == '__main__':
-    workbook = app.Workbooks.Add()
+    # argparse
+    parser = argparse.ArgumentParser(description='Aggregate and visualize log data of Fio output.')
+    parser.add_argument(
+        'dirs',
+        nargs='+',
+        help='Directories of json and log files output by Fio. Each directory contains all log and json output generated during a Fio workload.'
+    )
+    parser.add_argument(
+        '--sheet-name',
+        default=None,
+        help='Name of the sheet to store the data. If not given, data in each directories will be stored in separate sheets, where sheet name is the directory name.'
+    )
+    parser.add_argument(
+        '--sheet-names',
+        nargs='*',
+        default=[],
+        help='Name of the sheets to store the data. Number of the names should be the same of that of `dirs`.'
+    )
 
+    args = parser.parse_args()
+
+    workbook = app.Workbooks.Add()
     util = ExcelUtils(workbook)
 
-    json_file = 'tmp2/jfs-fio.json'
+    table_offset = 0
+    for i, d in enumerate(args.dirs):
+        json_file = glob_a_file(f'{d}/*.json')
+        sheet_name = args.sheet_name or d
 
-    aggregate_and_visualize(json_file, util, sheet_name="tmp2")
+        if args.sheet_names:
+            sheet_name = args.sheet_names[i]
+
+        if not args.sheet_name or args.sheet_names:
+            table_offset = 0
+
+        aggregate_and_visualize(json_file, sheet_name=sheet_name, util=util, table_offset=table_offset)
+        table_offset = workbook.ActiveSheet.UsedRange.Columns.Count + 1
+
+    app.DisplayAlerts = False
+    workbook.Worksheets("Sheet1").Delete()

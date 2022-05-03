@@ -64,7 +64,7 @@ class ExcelUtils():
         return sheet.Range(sheet.Cells(*s), sheet.Cells(*e))
 
 
-    def column_end(self, col :int) -> int:
+    def row_end(self, col :int) -> int:
         '''
         return the 'row number' of the last cell that contains data in the given column.
         '''
@@ -72,7 +72,7 @@ class ExcelUtils():
         return sheet.Cells(sheet.Rows.Count, col).End(constants.xlUp).Row
 
 
-    def row_end(self, row :int) -> int:
+    def column_end(self, row :int) -> int:
         '''
         return the 'column number' of the last cell that contains data in the given row.
         '''
@@ -188,13 +188,13 @@ class ExcelUtils():
     @property
     def vbmodule(self):
         if not hasattr(self, '_vbmodule'):
-            self._vbmodule_name = 'python_controlled'
+            _vbmodule_name = 'python_controlled'
             try: # try exsiting
-                self._vbmodule = self.workbook.VBProject.VBComponents(self._vbmodule_name)
+                self._vbmodule = self.workbook.VBProject.VBComponents(_vbmodule_name)
                 self._vbmodule.CodeModule.DeleteLines(1, self._vbmodule.CodeModule.CountOfLines)
             except: # or add new
                 self._vbmodule = self.workbook.VBProject.VBComponents.Add(1) # vbext_ct_StdModule
-                self._vbmodule.Name = self._vbmodule_name
+                self._vbmodule.Name = _vbmodule_name
         return self._vbmodule
 
 
@@ -203,7 +203,6 @@ class ExcelUtils():
         if vbcomponent.Type != 1:
             raise ValueError('Component type must be vbext_ct_StdModule (1).')
         self._vbmodule = vbcomponent
-        self._vbmodule_name = vbcomponent.Name
 
 
     @staticmethod
@@ -365,7 +364,7 @@ class ExcelXYChartUtils():
         if len(triple_range) != 3:
             raise ValueError('triple_range must be a list of 3 integers.')
         row1, col1, col2 = triple_range
-        row2 = self.util.column_end(col1)
+        row2 = self.util.row_end(col1)
         self.add_series([(row1, col1), (row2, col1)], [(row1, col2), (row2, col2)], **kwargs)
 
 

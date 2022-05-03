@@ -301,7 +301,7 @@ if __name__ == '__main__':
         '--sheet-names',
         nargs='*',
         default=[],
-        help='Name of the sheets to store the data. Number of the names should be the same of that of `dirs`.'
+        help='Name of the sheets to store the data. Number of the names should be the same as that of `dirs`.'
     )
 
     args = parser.parse_args()

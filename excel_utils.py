@@ -1,4 +1,3 @@
-from email.policy import default
 import re
 import atexit
 import win32com as win32

@@ -5,11 +5,10 @@
 
 import argparse
 import os
-import re
 import json
 import csv
 import glob
-from itertools import accumulate
+from itertools import accumulate, dropwhile
 from types import SimpleNamespace
 
 from excel_utils import ExcelUtils, ExcelXYChartUtils, app
@@ -35,7 +34,7 @@ def save_as_csv(table, path, dialect='excel'):
 def glob_a_file(pattern) -> str:
     files = glob.glob(pattern)
     if len(files) != 1:
-        raise f'number of files globed is not 1: log_file={repr(files)}'
+        raise Exception(f'number of files globed is not 1: log_file={repr(files)}')
     return files[0]
 
 
@@ -178,7 +177,7 @@ def aggregate(o :SimpleNamespace) -> dict:
 
         # series = prepend_header(series, f"Job '{job.jobname}'")
         tables[job.jobname] = table
-        save_as_csv(table, f'{job.jobname}.csv')
+        save_as_csv(list(accumulate(table.values(), func=concatenate))[-1], f'{job.jobname}.csv')
 
     return tables
 
@@ -225,7 +224,8 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
         formula = "=(((RC[-2]-R[-1]C[-2])/1000)*RC[-1]/1024/1024+R[-1]C)"
         for offset, ddir_group in zip(ddir_group_offsets, table.values()):
             formula_col = offset + 3
-            rbox = [(4, formula_col), (len(ddir_group), formula_col)]
+            formula_row_end = len(list(dropwhile(lambda x: x[1] == '', ddir_group[::-1])))
+            rbox = [(4, formula_col), (formula_row_end, formula_col)]
             util.set_formula( rbox, formula )
             util.range(rbox).NumberFormatLocal = "0.00_ " # two decimal places
 
@@ -275,8 +275,6 @@ def aggregate_and_visualize(json_file :str, util :ExcelUtils, sheet_name=None, t
 
         # TODO: histograms: latency
 
-        # TODO: common statistics: avg of bw, avg of iops, avg of latency, min max values.
-
         if sheet_name:
             table_offset = ddir_group_offsets[-1] + 1 # 隔一列
 
@@ -303,10 +301,23 @@ if __name__ == '__main__':
         default=[],
         help='Name of the sheets to store the data. Number of the names should be the same as that of `dirs`.'
     )
+    parser.add_argument(
+        '-o',
+        nargs='?',
+        help='save the file with the given pathname.'
+    )
+    parser.add_argument(
+        '--close',
+        action='store_true',
+        help='Close the file after saving. Must be used with `-o`.'
+    )
 
     args = parser.parse_args()
 
     workbook = app.Workbooks.Add()
+    if args.o:
+        workbook.SaveAs(os.path.abspath(args.o))
+
     util = ExcelUtils(workbook)
 
     table_offset = 0
@@ -323,5 +334,10 @@ if __name__ == '__main__':
         aggregate_and_visualize(json_file, sheet_name=sheet_name, util=util, table_offset=table_offset)
         table_offset = workbook.ActiveSheet.UsedRange.Columns.Count + 1
 
+    # TODO: summary sheet
+    # common statistics: avg of bw, avg of iops, avg of latency, min max values.
+
     app.DisplayAlerts = False
     workbook.Worksheets("Sheet1").Delete()
+    if args.close and args.o:
+        workbook.Close(SaveChanges=True)
